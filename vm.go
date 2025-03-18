@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 )
 
 type Chip8VM struct {
@@ -12,16 +14,18 @@ type Chip8VM struct {
 	pc   uint16
 
 	// support depth 16 level callstack
-	stack []uint16
+	stack [16]uint16
+	sp    byte
 
 	delayTimer byte
 	// trigger beep
 	soundTimer byte
 
 	// 64 x 32 pixels, monochrome pixel (1 pixel = 1 bit)
-	screen [256]byte
+	// for simplify just use byte here
+	display [64][32]byte
 
-	keys uint16
+	keys [16]byte
 }
 
 var fontSet = [...]byte{
@@ -58,4 +62,64 @@ func New(romPayload []byte) *Chip8VM {
 	copy(vm.mem[0x200:len(romPayload)+0x200], romPayload)
 
 	return vm
+}
+
+func (vm *Chip8VM) Serve(ctx context.Context) {
+	cpuHz := 500
+	timerHz := 60
+
+	cpuCycleTime := 1 / float64(cpuHz)
+	timerCycleTime := 1 / float64(timerHz)
+
+	cpuTick := time.NewTicker(time.Duration(cpuCycleTime) * time.Second)
+	timerTick := time.NewTicker(time.Duration(timerCycleTime) * time.Second)
+	for {
+		select {
+		case <-cpuTick.C:
+			vm.handleCycle()
+		case <-timerTick.C:
+			vm.handleTimer()
+		case <-ctx.Done():
+			log.Println("stopping....")
+			return
+		}
+	}
+}
+
+func (vm *Chip8VM) handleTimer() {
+	if vm.delayTimer > 0 {
+		vm.delayTimer--
+	}
+	if vm.soundTimer > 0 {
+		vm.soundTimer--
+		// one beep
+	}
+}
+
+func (vm *Chip8VM) handleCycle() {
+	// fetch opcode, opcode is 2 byte
+	opcode := uint16(vm.mem[vm.pc])<<8 | uint16(vm.mem[vm.pc+1])
+	vm.pc += 2
+
+	x := opcode & 0xF000 >> 12
+	xx := opcode & 0xFF00 >> 8
+	nn := opcode & 0x00FF
+	nnn := opcode & 0x0FFF
+
+	log.Printf("Handle opcode %d \n", opcode)
+
+	switch {
+	case opcode == 0x00E0:
+		// clear screen, set black
+		vm.display = [64][32]byte{}
+	case opcode == 0x00EE:
+		// RET return from subroutine
+		vm.sp--
+		vm.pc = vm.stack[vm.sp]
+	case x == 1:
+		// JP addr
+		vm.pc = nnn
+	default:
+		log.Printf("opcode %X not implement yet", opcode)
+	}
 }
