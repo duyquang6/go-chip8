@@ -1,5 +1,10 @@
 package main
 
+import (
+	"log"
+	"os"
+)
+
 type Chip8VM struct {
 	mem  [4096]byte
 	vReg [16]byte
@@ -38,9 +43,19 @@ var fontSet = [...]byte{
 	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 }
 
-func New() *Chip8VM {
+func NewWithROMPath(romPath string) *Chip8VM {
+	payload, err := os.ReadFile(romPath)
+	if err != nil {
+		log.Println("load rom failed, err: ", err)
+		return nil
+	}
+	return New(payload)
+}
+
+func New(romPayload []byte) *Chip8VM {
 	vm := &Chip8VM{}
 	copy(vm.mem[:80], fontSet[:])
+	copy(vm.mem[0x200:len(romPayload)+0x200], romPayload)
 
 	return vm
 }
