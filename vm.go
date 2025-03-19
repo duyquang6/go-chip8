@@ -147,9 +147,18 @@ func (vm *Chip8VM) handleCycle() {
 		// DRW Vx, Vy, nibble
 		vx, vy := vm.V[lowX], vm.V[nn&0xF0>>4]
 		height := n
-
+		vm.V[0xF] = 0
 		for row := range height {
-
+			sprite := vm.mem[vm.I+uint16(row)]
+			for col := range byte(8) {
+				bit := sprite & (0x80 >> col)
+				if bit > 0 {
+					if vm.display[vx+row][vy+col] == 1 {
+						vm.V[0xF] = 1
+					}
+					vm.display[vx+row][vy+col] ^= 1
+				}
+			}
 		}
 	default:
 		log.Printf("opcode %X not implement yet", opcode)
