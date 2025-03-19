@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"log"
+	"math/rand"
 	"os"
 	"time"
 )
 
 type Chip8VM struct {
-	mem  [4096]byte
-	vReg [16]byte
-	iReg uint16
-	pc   uint16
+	mem [4096]byte
+	V   [16]byte
+	I   uint16
+	pc  uint16
 
 	// support depth 16 level callstack
 	stack [16]uint16
@@ -101,9 +102,11 @@ func (vm *Chip8VM) handleCycle() {
 	opcode := uint16(vm.mem[vm.pc])<<8 | uint16(vm.mem[vm.pc+1])
 	vm.pc += 2
 
-	x := opcode & 0xF000 >> 12
 	xx := opcode & 0xFF00 >> 8
-	nn := opcode & 0x00FF
+	highX := opcode & 0xF000 >> 12
+	lowX := xx & 0xF
+	n := byte(opcode & 0xF)
+	nn := byte(opcode & 0xFF)
 	nnn := opcode & 0x0FFF
 
 	log.Printf("Handle opcode %d \n", opcode)
@@ -116,9 +119,38 @@ func (vm *Chip8VM) handleCycle() {
 		// RET return from subroutine
 		vm.sp--
 		vm.pc = vm.stack[vm.sp]
-	case x == 1:
+	case highX == 1:
 		// JP addr
 		vm.pc = nnn
+	case highX == 2:
+		// CALL addr
+		if vm.sp == 16 {
+			panic("stack overflow, limit depth 16")
+		}
+		vm.stack[vm.sp] = vm.pc
+		vm.sp++
+		vm.pc = nnn
+	case highX == 6:
+		// LD Vx, byte
+		vm.V[lowX] = nn
+	case highX == 7:
+		// ADD Vx, byte
+		vm.V[lowX] += nn
+	case highX == 0xA:
+		//LD I, addr
+		vm.I = nnn
+	case highX == 0xC:
+		// RND Vx, byte
+		rnd := byte(rand.Intn(256))
+		vm.V[lowX] = rnd & nn
+	case highX == 0xD:
+		// DRW Vx, Vy, nibble
+		vx, vy := vm.V[lowX], vm.V[nn&0xF0>>4]
+		height := n
+
+		for row := range height {
+
+		}
 	default:
 		log.Printf("opcode %X not implement yet", opcode)
 	}
