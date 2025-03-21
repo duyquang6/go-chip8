@@ -8,7 +8,8 @@ A CHIP-8 emulator implemented in Go using [`tcell`](go.mod) for display renderin
 - Real-time display rendering at 30Hz
 - Keyboard input support with configurable key mappings
 - Timer and sound support (500Hz CPU, 60Hz timers)
-- Debug logging
+- Debug logging with structured output
+- Command-line interface with customizable options
 
 ## Prerequisites
 
@@ -18,20 +19,36 @@ A CHIP-8 emulator implemented in Go using [`tcell`](go.mod) for display renderin
 ## Installation
 
 ```bash
-git clone https://github.com/duyquang6/go-chip-ei.git
-cd go-chip-ei
-go build
+git clone https://github.com/duyquang6/go-chip-8.git
+cd go-chip-8
+go build -o chip8
 ```
 
 ## Usage
 
-Run the emulator with:
+Run the emulator with various options:
 
 ```bash
-./go-chip-ei
+# Run with default ROM (pong)
+./chip8
+
+# Run with a specific ROM
+./chip8 --rom path/to/rom.ch8
+
+# Run with debug logging enabled
+./chip8 --rom path/to/rom.ch8 --debug
+
+# Show available options
+./chip8 --help
 ```
 
 By default, it loads the [`roms/pong.ch8`](roms/pong.ch8) ROM.
+
+## Command-line Options
+
+- `--rom`: Path to CHIP-8 ROM file (default: roms/pong.ch8)
+- `--debug`: Enable debug logging
+- `--help`: Display help information
 
 ## Keyboard Mapping
 
@@ -71,7 +88,7 @@ A 0 B F           Z X C V
 
 ## Development
 
-The emulator uses structured logging (slog) for debugging. Logs are output in JSON format with source information included.
+The emulator uses structured logging (slog) for debugging. When debug mode is enabled (`--debug`), detailed logs are output in text format with source information included.
 
 ## License
 
