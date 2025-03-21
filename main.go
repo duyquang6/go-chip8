@@ -1,3 +1,20 @@
 package main
 
-func main() {}
+import (
+	"log"
+	"log/slog"
+	"os"
+)
+
+func main() {
+	vm, err := NewWithROMPath("/var/home/ligt/me/go-chip-ei/roms/pong.ch8")
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug})))
+
+	if err != nil {
+		log.Fatal("init rom failed:", err)
+	}
+
+	if err := vm.Serve(); err != nil {
+		log.Fatal("serve failed:", err)
+	}
+}

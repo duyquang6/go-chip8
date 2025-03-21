@@ -100,6 +100,7 @@ func (vm *Chip8VM) Serve() error {
 	)
 	stopSignal := make(chan struct{})
 
+	// go routine handle cpu
 	go func() {
 		lastCPU := time.Now()
 		lastTimer := time.Now()
@@ -107,7 +108,7 @@ func (vm *Chip8VM) Serve() error {
 		for {
 			select {
 			case <-stopSignal:
-				slog.Info("received stop signal, exit handleCycle goroutine")
+				slog.Info("received stop signal, exit cpu goroutine")
 				return
 			default:
 				// do cpu cycle
@@ -134,51 +135,72 @@ func (vm *Chip8VM) Serve() error {
 	}
 	defer screen.Fini()
 
-	keyLastPressedAt := make(map[byte]time.Time) // Track pressed keys
-	for {
-		ev := screen.PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			if ev.Key() == tcell.KeyCtrlC || ev.Key() == tcell.KeyEsc {
-				screen.PostEvent(tcell.NewEventInterrupt(nil))
-				return nil
-			}
+	// goroutine for display
+	go func() {
+		lastRender := time.Now()
+		for {
+			select {
+			case <-stopSignal:
+				slog.Info("received stop signal, exit render goroutine")
+				return
+			default:
+				if time.Since(lastRender) >= renderPeriod {
+					screen.Clear()
+					for x := range 64 {
+						for y := range 32 {
+							if vm.display[x][y] == 1 {
+								screen.SetContent(x, y, '█', nil, tcell.StyleDefault)
 
-			char := ev.Rune()
-			if key, ok := KEYMAP[char]; ok {
-				if ev.Modifiers() == tcell.ModNone && vm.keys[key] == 0 {
-					vm.keys[key] = 1
-					keyLastPressedAt[key] = time.Now()
-					slog.Debug("Key pressed", "key", REVKEYMAP[key])
+							}
+						}
+					}
+					screen.Show()
+					lastRender = lastRender.Add(renderPeriod)
 				}
 			}
-		case *tcell.EventInterrupt:
-			close(stopSignal)
-			slog.Debug("send interrupt msg")
-			return nil
 		}
+	}()
 
-		// Auto release key after 100ms
-		for key, pressed := range vm.keys {
-			key := byte(key)
-			if pressed == 1 && time.Since(keyLastPressedAt[key]) >= 100*time.Millisecond {
-				vm.keys[key] = 0
-				slog.Debug("Key released", "key", REVKEYMAP[key])
-			}
-		}
+	// handle keyboard
+	keyLastPressedAt := make(map[byte]time.Time) // Track pressed keys
+	keyCh := make(chan tcell.Event)
+	go func() {
+		screen.ChannelEvents(keyCh, nil)
+	}()
 
-		// Render display at 30 Hz
-		if time.Since(lastRender) >= renderPeriod {
-			screen.Clear()
-			for x := 0; x < 64; x++ {
-				for y := 0; y < 32; y++ {
-					if vm.display[x][y] == 1 {
-						screen.SetContent(x, y, '█', nil, tcell.StyleDefault)
+	for {
+		select {
+		case ev := <-keyCh:
+			switch ev := ev.(type) {
+			case *tcell.EventKey:
+				if ev.Key() == tcell.KeyCtrlC || ev.Key() == tcell.KeyEsc {
+					screen.PostEvent(tcell.NewEventInterrupt(nil))
+					return nil
+				}
+
+				char := ev.Rune()
+				if key, ok := KEYMAP[char]; ok {
+					if ev.Modifiers() == tcell.ModNone && vm.keys[key] == 0 {
+						vm.keys[key] = 1
+						keyLastPressedAt[key] = time.Now()
+						slog.Debug("Key pressed", "key", REVKEYMAP[key])
 					}
 				}
+			case *tcell.EventInterrupt:
+				close(stopSignal)
+				slog.Debug("send interrupt msg")
+				return nil
 			}
-			screen.Show()
-			lastRender = lastRender.Add(renderPeriod)
+		default:
+			// Auto release key after 100ms
+			for key, pressed := range vm.keys {
+				key := byte(key)
+				if pressed == 1 && time.Since(keyLastPressedAt[key]) >= 100*time.Millisecond {
+					vm.keys[key] = 0
+					slog.Debug("Key released", "key", REVKEYMAP[key])
+				}
+			}
+			time.Sleep(500 * time.Microsecond)
 		}
 	}
 }
@@ -215,7 +237,7 @@ func (vm *Chip8VM) handleCycle() {
 	nn := byte(opcode & 0x00FF)
 	nnn := uint16(opcode & 0x0FFF)
 
-	slog.Debug("Handle opcode", "opcode", opcode)
+	// slog.Debug("Handle opcode", "opcode", opcode)
 
 	switch {
 	case opcode == 0x00E0:
