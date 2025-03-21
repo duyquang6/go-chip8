@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"os"
 	"time"
@@ -90,11 +90,14 @@ func New(romPayload []byte) (*Chip8VM, error) {
 }
 
 func (vm *Chip8VM) Serve() error {
-	cpuHz := 500
-	timerHz := 60
-
-	cpuPeriod := time.Second / time.Duration(cpuHz)
-	timerPeriod := time.Second / time.Duration(timerHz)
+	const (
+		cpuHz        = 500
+		timerHz      = 60
+		renderHz     = 30
+		cpuPeriod    = time.Second / cpuHz
+		timerPeriod  = time.Second / timerHz
+		renderPeriod = time.Second / renderHz
+	)
 	stopSignal := make(chan struct{})
 
 	go func() {
@@ -104,7 +107,7 @@ func (vm *Chip8VM) Serve() error {
 		for {
 			select {
 			case <-stopSignal:
-				log.Println("received stop signal, exit handleCycle goroutine")
+				slog.Info("received stop signal, exit handleCycle goroutine")
 				return
 			default:
 				// do cpu cycle
@@ -146,12 +149,12 @@ func (vm *Chip8VM) Serve() error {
 				if ev.Modifiers() == tcell.ModNone && vm.keys[key] == 0 {
 					vm.keys[key] = 1
 					keyLastPressedAt[key] = time.Now()
-					log.Printf("Key %c pressed (0x%X)", char, key)
+					slog.Debug("Key pressed", "key", REVKEYMAP[key])
 				}
 			}
 		case *tcell.EventInterrupt:
 			close(stopSignal)
-			log.Println("send interrupt msg")
+			slog.Debug("send interrupt msg")
 			return nil
 		}
 
@@ -160,8 +163,22 @@ func (vm *Chip8VM) Serve() error {
 			key := byte(key)
 			if pressed == 1 && time.Since(keyLastPressedAt[key]) >= 100*time.Millisecond {
 				vm.keys[key] = 0
-				log.Printf("Key %c released (0x%X)", REVKEYMAP[key], key)
+				slog.Debug("Key released", "key", REVKEYMAP[key])
 			}
+		}
+
+		// Render display at 30 Hz
+		if time.Since(lastRender) >= renderPeriod {
+			screen.Clear()
+			for x := 0; x < 64; x++ {
+				for y := 0; y < 32; y++ {
+					if vm.display[x][y] == 1 {
+						screen.SetContent(x, y, '█', nil, tcell.StyleDefault)
+					}
+				}
+			}
+			screen.Show()
+			lastRender = lastRender.Add(renderPeriod)
 		}
 	}
 }
@@ -198,7 +215,7 @@ func (vm *Chip8VM) handleCycle() {
 	nn := byte(opcode & 0x00FF)
 	nnn := uint16(opcode & 0x0FFF)
 
-	log.Printf("Handle opcode %04X \n", opcode)
+	slog.Debug("Handle opcode", "opcode", opcode)
 
 	switch {
 	case opcode == 0x00E0:
@@ -362,6 +379,6 @@ func (vm *Chip8VM) handleCycle() {
 			vm.V[i] = vm.mem[vm.I+uint16(i)]
 		}
 	default:
-		log.Printf("opcode %X not implement yet", opcode)
+		slog.Error("opcode not implement yet", "op_code", opcode)
 	}
 }
