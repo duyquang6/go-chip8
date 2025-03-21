@@ -183,7 +183,7 @@ func (vm *Chip8VM) Serve() error {
 					if ev.Modifiers() == tcell.ModNone && vm.keys[key] == 0 {
 						vm.keys[key] = 1
 						keyLastPressedAt[key] = time.Now()
-						slog.Debug("Key pressed", "key", REVKEYMAP[key])
+						slog.Debug("Key pressed", "key", string(REVKEYMAP[key]))
 					}
 				}
 			case *tcell.EventInterrupt:
@@ -197,7 +197,7 @@ func (vm *Chip8VM) Serve() error {
 				key := byte(key)
 				if pressed == 1 && time.Since(keyLastPressedAt[key]) >= 100*time.Millisecond {
 					vm.keys[key] = 0
-					slog.Debug("Key released", "key", REVKEYMAP[key])
+					slog.Debug("Key released", "key", string(REVKEYMAP[key]))
 				}
 			}
 		}

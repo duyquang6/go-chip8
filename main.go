@@ -8,7 +8,8 @@ import (
 
 func main() {
 	vm, err := NewWithROMPath("/var/home/ligt/me/go-chip-ei/roms/pong.ch8")
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug})))
+	// set log level debug
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	if err != nil {
 		log.Fatal("init rom failed:", err)

@@ -1,4 +1,4 @@
-module github.com/duyquang6/go-chip-ei
+module github.com/duyquang6/go-chip-8
 
 go 1.24.1
 
