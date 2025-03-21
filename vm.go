@@ -1,30 +1,50 @@
 package main
 
 import (
-	"context"
+	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
 )
 
-var fontSet = [...]byte{
-	0xF0, 0x90, 0x90, 0x90, 0xF0, // 0: 1111, 1001, 1001, 1001, 1111, skip 4 low bit, only used 4 high bit
-	0x20, 0x60, 0x20, 0x20, 0x70, // 1: 0010, 0110, 0010, 0010, 0111
-	0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2: 1111, 0001, 1111, 1000, 1111
-	0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-	0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-	0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-	0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-	0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-	0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-	0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-	0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-	0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-	0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-	0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-	0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+var (
+	FONTSET = [...]byte{
+		0xF0, 0x90, 0x90, 0x90, 0xF0, // 0: 1111, 1001, 1001, 1001, 1111, skip 4 low bit, only used 4 high bit
+		0x20, 0x60, 0x20, 0x20, 0x70, // 1: 0010, 0110, 0010, 0010, 0111
+		0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2: 1111, 0001, 1111, 1000, 1111
+		0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+		0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+		0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+		0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+		0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+		0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+		0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+		0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+		0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+		0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+		0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+		0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+		0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+	}
+
+	KEYMAP = map[rune]byte{
+		'1': 0x1, '2': 0x2, '3': 0x3, '4': 0xC,
+		'q': 0x4, 'w': 0x5, 'e': 0x6, 'r': 0xD,
+		'a': 0x7, 's': 0x8, 'd': 0x9, 'f': 0xE,
+		'z': 0xA, 'x': 0x0, 'c': 0xB, 'v': 0xF,
+	}
+
+	REVKEYMAP = map[byte]rune{}
+)
+
+func init() {
+	for k, v := range KEYMAP {
+		REVKEYMAP[v] = k
+	}
 }
 
 type Chip8VM struct {
@@ -48,59 +68,113 @@ type Chip8VM struct {
 	keys [16]byte
 }
 
-func NewWithROMPath(romPath string) *Chip8VM {
+func NewWithROMPath(romPath string) (*Chip8VM, error) {
 	payload, err := os.ReadFile(romPath)
 	if err != nil {
-		log.Println("load rom failed, err: ", err)
-		return nil
+		return nil, fmt.Errorf("read ROM error: %w", err)
 	}
 	return New(payload)
 }
 
-func New(romPayload []byte) *Chip8VM {
+func New(romPayload []byte) (*Chip8VM, error) {
 	vm := &Chip8VM{
 		pc: 0x200,
 	}
 	if len(romPayload) >= 3584 {
-		panic("out of memory")
+		return nil, errors.New("ROM payload too large")
 	}
-	copy(vm.mem[:80], fontSet[:])
+	copy(vm.mem[:80], FONTSET[:])
 	copy(vm.mem[0x200:len(romPayload)+0x200], romPayload)
 
-	return vm
+	return vm, nil
 }
 
-func (vm *Chip8VM) Serve(ctx context.Context) {
+func (vm *Chip8VM) Serve() error {
 	cpuHz := 500
 	timerHz := 60
 
 	cpuPeriod := time.Second / time.Duration(cpuHz)
 	timerPeriod := time.Second / time.Duration(timerHz)
+	stopSignal := make(chan struct{})
 
-	lastCPU := time.Now()
-	lastTimer := time.Now()
+	go func() {
+		lastCPU := time.Now()
+		lastTimer := time.Now()
 
-	for {
-		now := time.Now()
+		for {
+			select {
+			case <-stopSignal:
+				log.Println("received stop signal, exit handleCycle goroutine")
+				return
+			default:
+				// do cpu cycle
+				if time.Since(lastCPU) >= cpuPeriod {
+					vm.handleCycle()
+					lastCPU = lastCPU.Add(cpuPeriod)
+				}
 
-		// do cpu cycle
-		if now.Sub(lastCPU) >= cpuPeriod {
-			vm.handleCycle()
-			lastCPU = now
+				if time.Since(lastTimer) >= timerPeriod {
+					vm.handleTimer()
+					lastTimer = lastTimer.Add(timerPeriod)
+				}
+
+				// Sleep to prevent busy-waiting; 500 µs balances responsiveness and CPU usage
+				time.Sleep(500 * time.Microsecond)
+			}
 		}
+	}()
 
-		if now.Sub(lastTimer) >= timerPeriod {
-			vm.handleTimer()
-			lastTimer = now
-		}
-		if ctx.Err() != nil {
-			log.Println("stopping....")
-			return
-		}
-
-		// Sleep to prevent busy-waiting; 500 µs balances responsiveness and CPU usage
-		time.Sleep(500 * time.Microsecond)
+	// Display
+	screen, err := vm.initDisplay()
+	if err != nil {
+		return fmt.Errorf("init display got error: %w", err)
 	}
+	defer screen.Fini()
+
+	keyLastPressedAt := make(map[byte]time.Time) // Track pressed keys
+	for {
+		ev := screen.PollEvent()
+		switch ev := ev.(type) {
+		case *tcell.EventKey:
+			if ev.Key() == tcell.KeyCtrlC || ev.Key() == tcell.KeyEsc {
+				screen.PostEvent(tcell.NewEventInterrupt(nil))
+				return nil
+			}
+
+			char := ev.Rune()
+			if key, ok := KEYMAP[char]; ok {
+				if ev.Modifiers() == tcell.ModNone && vm.keys[key] == 0 {
+					vm.keys[key] = 1
+					keyLastPressedAt[key] = time.Now()
+					log.Printf("Key %c pressed (0x%X)", char, key)
+				}
+			}
+		case *tcell.EventInterrupt:
+			close(stopSignal)
+			log.Println("send interrupt msg")
+			return nil
+		}
+
+		// Auto release key after 100ms
+		for key, pressed := range vm.keys {
+			key := byte(key)
+			if pressed == 1 && time.Since(keyLastPressedAt[key]) >= 100*time.Millisecond {
+				vm.keys[key] = 0
+				log.Printf("Key %c released (0x%X)", REVKEYMAP[key], key)
+			}
+		}
+	}
+}
+
+func (*Chip8VM) initDisplay() (tcell.Screen, error) {
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		return nil, err
+	}
+	if err := screen.Init(); err != nil {
+		return nil, err
+	}
+	return screen, nil
 }
 
 func (vm *Chip8VM) handleTimer() {
@@ -195,10 +269,9 @@ func (vm *Chip8VM) handleCycle() {
 		vm.V[0xF] = vm.V[x] & 1
 		vm.V[x] >>= 1
 	case opcode&0xF00F == 0x8007:
-		if vm.V[y] >= vm.V[x] {
-			vm.V[0xF] = 1
-		}
-		vm.V[x] = byte((uint16(vm.V[y]) - uint16(vm.V[x])) & 0xFF)
+		diff := uint16(vm.V[y]) - uint16(vm.V[x])
+		vm.V[0xF] = byte((diff>>15 ^ 1))
+		vm.V[x] = byte(diff & 0xFF)
 	case opcode&0xF00F == 0x800E:
 		vm.V[0xF] = (vm.V[x] >> 7) & 1
 		vm.V[x] = (vm.V[x] << 1) & 0xFF
