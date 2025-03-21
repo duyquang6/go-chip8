@@ -200,7 +200,6 @@ func (vm *Chip8VM) Serve() error {
 					slog.Debug("Key released", "key", REVKEYMAP[key])
 				}
 			}
-			time.Sleep(500 * time.Microsecond)
 		}
 	}
 }
@@ -237,7 +236,7 @@ func (vm *Chip8VM) handleCycle() {
 	nn := byte(opcode & 0x00FF)
 	nnn := uint16(opcode & 0x0FFF)
 
-	// slog.Debug("Handle opcode", "opcode", opcode)
+	// slog.Debug("Handle opcode", "opcode", fmt.Sprintf("%04X", opcode))
 
 	switch {
 	case opcode == 0x00E0:
@@ -332,11 +331,11 @@ func (vm *Chip8VM) handleCycle() {
 	case opcode&0xF000 == 0xD000:
 		// DRW Vx, Vy, nibble
 		vm.V[0xF] = 0
-		for row := range n {
-			sprite := vm.mem[vm.I+uint16(row)]
-			for col := range byte(8) {
-				if sprite&(0x80>>col) > 0 {
-					r, c := (vm.V[x]+row)%64, (vm.V[y]+col)%32
+		for dy := range n {
+			sprite := vm.mem[vm.I+uint16(dy)]
+			for dx := range byte(8) {
+				if sprite&(0x80>>dx) > 0 {
+					r, c := (vm.V[x]+dx)%64, (vm.V[y]+dy)%32
 					vm.display[r][c] ^= 1
 					if vm.display[r][c] == 0 {
 						vm.V[0xF] = 1
