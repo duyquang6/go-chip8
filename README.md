@@ -2,6 +2,11 @@
 
 A CHIP-8 emulator implemented in Go using [`tcell`](go.mod) for display rendering.
 
+
+<p align="center">
+  <img src="docs/intro.gif" alt="Video Demo">
+</p>
+
 ## Features
 
 - Complete CHIP-8 instruction set implementation
